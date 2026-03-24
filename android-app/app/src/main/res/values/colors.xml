@@ -1,0 +1,11 @@
+<resources>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+    <color name="screen_bg">#E9EEF5</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="accent">#2563EB</color>
+    <color name="button_bg">#D9E6FF</color>
+    <color name="button_icon">#1E3A8A</color>
+    <color name="title_text">#0F172A</color>
+    <color name="subtitle_text">#64748B</color>
+</resources>

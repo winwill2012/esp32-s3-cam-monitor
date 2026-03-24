@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <com.welinklab.esp32camcontroller.view.MjpegView
+        android:id="@+id/mjpegViewFullscreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#000000" />
+
+    <ImageButton
+        android:id="@+id/btnExitFullscreen"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="12dp"
+        android:background="@drawable/bg_control_button"
+        android:contentDescription="@string/exit_fullscreen"
+        android:padding="10dp"
+        android:src="@drawable/ic_fullscreen_exit"
+        android:tint="@color/button_icon" />
+
+</FrameLayout>

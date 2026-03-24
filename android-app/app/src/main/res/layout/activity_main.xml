@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_screen"
+    android:padding="12dp">
+
+    <FrameLayout
+        android:id="@+id/topBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/main_title"
+                android:textAlignment="center"
+                android:textColor="@color/title_text"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="@string/main_subtitle"
+                android:textAlignment="center"
+                android:textColor="@color/subtitle_text"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/btnSettings"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="end|center_vertical"
+            android:background="@drawable/bg_control_button"
+            android:contentDescription="@string/settings"
+            android:padding="10dp"
+            android:src="@drawable/ic_settings_gear"
+            android:tint="@color/button_icon" />
+    </FrameLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/contentPanel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:layout_marginStart="6dp"
+        android:layout_marginEnd="6dp"
+        android:background="@drawable/bg_control_panel"
+        android:elevation="10dp"
+        android:padding="10dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/topBar">
+
+        <FrameLayout
+            android:id="@+id/videoCard"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="@drawable/bg_card"
+            android:padding="8dp"
+            app:layout_constraintDimensionRatio="4:3"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <com.welinklab.esp32camcontroller.view.MjpegView
+                android:id="@+id/mjpegView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#000000" />
+
+            <ImageButton
+                android:id="@+id/btnFullscreen"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_gravity="bottom|end"
+                android:layout_margin="8dp"
+                android:background="@drawable/bg_control_button"
+                android:contentDescription="@string/fullscreen_play"
+                android:padding="10dp"
+                android:src="@drawable/ic_fullscreen"
+                android:tint="@color/button_icon" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/controlContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="@id/videoCard"
+            app:layout_constraintStart_toStartOf="@id/videoCard"
+            app:layout_constraintTop_toBottomOf="@id/videoCard">
+
+            <ImageButton
+                android:id="@+id/btnUp"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:background="@drawable/bg_control_button"
+                android:contentDescription="@string/cmd_up"
+                android:elevation="8dp"
+                android:src="@drawable/ic_arrow_up"
+                android:tint="@color/button_icon" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/btnLeft"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_marginEnd="24dp"
+                    android:background="@drawable/bg_control_button"
+                    android:contentDescription="@string/cmd_left"
+                    android:elevation="8dp"
+                    android:src="@drawable/ic_arrow_left"
+                    android:tint="@color/button_icon" />
+
+                <ImageButton
+                    android:id="@+id/btnReset"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/bg_control_button"
+                    android:contentDescription="@string/cmd_reset"
+                    android:elevation="8dp"
+                    android:src="@drawable/ic_reset"
+                    android:tint="@color/accent" />
+
+                <ImageButton
+                    android:id="@+id/btnRight"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:layout_marginStart="24dp"
+                    android:background="@drawable/bg_control_button"
+                    android:contentDescription="@string/cmd_right"
+                    android:elevation="8dp"
+                    android:src="@drawable/ic_arrow_right"
+                    android:tint="@color/button_icon" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/btnDown"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_control_button"
+                android:contentDescription="@string/cmd_down"
+                android:elevation="8dp"
+                android:src="@drawable/ic_arrow_down"
+                android:tint="@color/button_icon" />
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <TextView
+        android:id="@+id/tvCopyright"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="4dp"
+        android:gravity="center"
+        android:text="@string/copyright_notice"
+        android:textAlignment="center"
+        android:textColor="#3E4C63"
+        android:textSize="11sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
