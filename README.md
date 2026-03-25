@@ -1,6 +1,12 @@
 # esp32-s3-cam-monitor
 基于 ESP32-S3-CAM 的远程监控项目（UDP 推流 + 本地/服务器代理转 HTTP MJPEG + Android 播放与 MQTT 控制）。
 
+# 效果展示
+![](https://github.com/winwill2012/esp32-s3-cam-monitor/blob/master/%E6%95%88%E6%9E%9C%E5%9B%BE.png)
+
+# 说明
+本项目为微联编程网ESP32视觉实战的视频课程代码，代码开源，想了解详细工作原理讲解的，可以去我网站看视频讲解，视频地址：[https://code.welinklab.com/#/details?id=30](https://code.welinklab.com/#/details?id=30)
+
 ## 目录说明
 
 1. `android-app`
