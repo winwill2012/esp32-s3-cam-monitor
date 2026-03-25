@@ -34,7 +34,7 @@ void setup() {
         .ledc_channel = LEDC_CHANNEL_0,
 
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size = FRAMESIZE_SVGA,
+        .frame_size = FRAMESIZE_VGA,
         .jpeg_quality = 13,
         .fb_count = 2,
         .grab_mode = CAMERA_GRAB_LATEST
@@ -66,8 +66,8 @@ void sendFrameViaUdp() {
     int sentBytes = 0; // 当前已经推流出去的字节数
     while (sentBytes < total) {
         const int len = min(MAX_UDP_LENGTH, total - sentBytes);
-        // 这里的IP和端口，改成你自己的野火调试助手上显示的
-        udp.beginPacket("162.14.83.139", 5000);
+        // 这里的IP和端口，改成你自己的公网推流地址和端口
+        udp.beginPacket("119.29.197.186", 5000);
         udp.write(frame->buf + sentBytes, len);
         udp.endPacket();
         sentBytes += len;
