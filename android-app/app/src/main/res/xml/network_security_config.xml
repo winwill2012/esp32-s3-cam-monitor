@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">132.232.209.150</domain>
-    </domain-config>
+    <!-- 本地/局域网/IPv6 摄像头多为 HTTP；域名规则无法匹配任意 IPv4/IPv6 字面量 -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
 </network-security-config>

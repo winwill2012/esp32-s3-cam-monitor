@@ -6,6 +6,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.welinklab.esp32camcontroller.net.StreamUrlUtils
 import com.welinklab.esp32camcontroller.view.MjpegView
 
 class FullscreenPlayerActivity : AppCompatActivity() {
@@ -20,7 +21,9 @@ class FullscreenPlayerActivity : AppCompatActivity() {
         setContentView(R.layout.activity_fullscreen_player)
 
         mjpegView = findViewById(R.id.mjpegViewFullscreen)
-        streamUrl = intent.getStringExtra(MainActivity.EXTRA_STREAM_URL).orEmpty()
+        streamUrl = StreamUrlUtils.normalizeStreamUrl(
+            intent.getStringExtra(MainActivity.EXTRA_STREAM_URL).orEmpty()
+        )
 
         findViewById<ImageButton>(R.id.btnExitFullscreen).setOnClickListener {
             finish()

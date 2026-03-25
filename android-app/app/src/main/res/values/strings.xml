@@ -1,4 +1,4 @@
-<resources>
+﻿<resources>
     <string name="app_name">ESP32摄像头</string>
     <string name="main_title">ESP32远程监控</string>
     <string name="main_subtitle">微联编程出品</string>
@@ -28,7 +28,7 @@
     <string name="mqtt_username_hint">用户名</string>
     <string name="mqtt_password_hint">密码</string>
     <string name="mqtt_topic_hint">下发 Topic，例如 /command</string>
-    <string name="mjpeg_url_hint">例如 http://132.232.209.150:8080/mjpeg</string>
+    <string name="mjpeg_url_hint">例如 http://162.14.83.139:8080/mjpeg</string>
     <string name="config_empty_error">配置不能为空</string>
     <string name="config_saved">MQTT配置已保存</string>
     <string name="config_saved_all">配置已保存并生效</string>

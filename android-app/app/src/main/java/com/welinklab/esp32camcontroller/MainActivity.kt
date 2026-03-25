@@ -23,12 +23,15 @@ import androidx.core.widget.doAfterTextChanged
 import com.google.android.material.snackbar.Snackbar
 import com.welinklab.esp32camcontroller.mqtt.MqttConfig
 import com.welinklab.esp32camcontroller.mqtt.MqttPublisher
+import com.welinklab.esp32camcontroller.net.MjpegHttp
+import com.welinklab.esp32camcontroller.net.StreamUrlUtils
 import com.welinklab.esp32camcontroller.view.MjpegView
+import okhttp3.Request
 import org.eclipse.paho.client.mqttv3.MqttClient
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
 import java.io.InputStream
-import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -56,7 +59,9 @@ class MainActivity : AppCompatActivity() {
         mjpegView = findViewById(R.id.mjpegView)
         vibrator = resolveVibrator()
         mqttTopic = prefs.getString(KEY_TOPIC, DEFAULT_TOPIC) ?: DEFAULT_TOPIC
-        mjpegUrl = prefs.getString(KEY_MJPEG_URL, DEFAULT_MJPEG_URL) ?: DEFAULT_MJPEG_URL
+        mjpegUrl = StreamUrlUtils.normalizeStreamUrl(
+            prefs.getString(KEY_MJPEG_URL, DEFAULT_MJPEG_URL) ?: DEFAULT_MJPEG_URL
+        )
         mqttPublisher = MqttPublisher(readMqttConfig()).apply { connect() }
 
         findViewById<ImageButton>(R.id.btnSettings).setOnClickListener {
@@ -103,16 +108,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindRepeatingButton(buttonId: Int, command: String) {
-        findViewById<ImageButton>(buttonId).setOnTouchListener { _, event ->
+        findViewById<ImageButton>(buttonId).setOnTouchListener { view, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    view.isPressed = true
                     performHapticFeedback()
                     startRepeating(command)
                     true
                 }
 
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    view.isPressed = false
                     stopRepeating()
+                    if (event.actionMasked == MotionEvent.ACTION_UP) {
+                        view.performClick()
+                    }
                     true
                 }
 
@@ -190,7 +200,7 @@ class MainActivity : AppCompatActivity() {
                 password = etPassword.text.toString()
             )
             val newTopic = etTopic.text.toString().trim()
-            val newMjpegUrl = etMjpegUrl.text.toString().trim()
+            val newMjpegUrl = StreamUrlUtils.normalizeStreamUrl(etMjpegUrl.text.toString().trim())
             if (newConfig.brokerUrl.isEmpty() || newConfig.username.isEmpty() || newTopic.isEmpty() || newMjpegUrl.isEmpty()) {
                 Snackbar.make(
                     findViewById(android.R.id.content),
@@ -266,7 +276,7 @@ class MainActivity : AppCompatActivity() {
                 password = etPassword.text.toString()
             )
             val newTopic = etTopic.text.toString().trim()
-            val newMjpegUrl = etMjpegUrl.text.toString().trim()
+            val newMjpegUrl = StreamUrlUtils.normalizeStreamUrl(etMjpegUrl.text.toString().trim())
             if (newConfig.brokerUrl.isEmpty() || newConfig.username.isEmpty() || newTopic.isEmpty() || newMjpegUrl.isEmpty()) {
                 Snackbar.make(
                     findViewById(android.R.id.content),
@@ -324,32 +334,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun testMjpegConnection(urlString: String): String? {
-        var connection: HttpURLConnection? = null
+        val url = StreamUrlUtils.normalizeStreamUrl(urlString)
         return try {
-            connection = URL(urlString).openConnection() as HttpURLConnection
-            connection.connectTimeout = 8000
-            connection.readTimeout = 8000
-            connection.instanceFollowRedirects = true
-            connection.requestMethod = "GET"
-            connection.setRequestProperty("Connection", "close")
-            connection.setRequestProperty("Accept", "multipart/x-mixed-replace,image/jpeg,*/*")
-            connection.connect()
-            val code = connection.responseCode
-            if (code !in 200..399) return "HTTP $code"
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .header("Connection", "close")
+                .header("Accept", "multipart/x-mixed-replace,image/jpeg,*/*")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android) Esp32CamController/1.0")
+                .build()
+            MjpegHttp.probeClient.newCall(request).execute().use { response ->
+                val code = response.code
+                if (code !in 200..399) {
+                    return@use "HTTP $code"
+                }
+                val contentType = response.header("Content-Type")?.lowercase().orEmpty()
+                val likelyMjpeg = contentType.contains("multipart")
+                    || contentType.contains("mjpeg")
+                    || contentType.contains("jpeg")
+                    || contentType.contains("x-mixed-replace")
 
-            // Some MJPEG servers keep stream open and may not send complete metadata.
-            val contentType = connection.contentType?.lowercase().orEmpty()
-            val likelyMjpeg = contentType.contains("multipart")
-                || contentType.contains("mjpeg")
-                || contentType.contains("jpeg")
+                val path = try {
+                    URL(url).path?.lowercase().orEmpty()
+                } catch (_: Exception) {
+                    ""
+                }
+                val pathLooksStream =
+                    path.contains("stream") || path.contains("mjpeg") || path.contains("capture")
 
-            val stream = connection.inputStream ?: return "no response stream"
-            val hasBytes = canReadSomeBytes(stream)
-            if (hasBytes || likelyMjpeg) null else "stream has no data"
+                if (likelyMjpeg || pathLooksStream) {
+                    return@use null
+                }
+
+                val stream = response.body?.byteStream() ?: return@use "no response stream"
+                val hasBytes = canReadSomeBytes(stream)
+                if (hasBytes) null else "stream has no data"
+            }
         } catch (e: Exception) {
-            e.message ?: "unknown"
-        } finally {
-            connection?.disconnect()
+            val base = e.message ?: e.javaClass.simpleName
+            if (e is SocketTimeoutException) {
+                "$base（流媒体首帧较慢时可忽略测试，保存后直接在主页播放）"
+            } else {
+                base
+            }
         }
     }
 
@@ -449,7 +476,8 @@ class MainActivity : AppCompatActivity() {
         private const val DEFAULT_USERNAME = "esp32-cam"
         private const val DEFAULT_PASSWORD = "314159!@#$%"
         private const val DEFAULT_TOPIC = "/command"
-        private const val DEFAULT_MJPEG_URL = "http://132.232.209.150:8080/mjpeg"
+        private const val DEFAULT_MJPEG_URL = "http://162.14.83.139:8080/mjpeg"
         const val EXTRA_STREAM_URL = "extra_stream_url"
     }
 }
+

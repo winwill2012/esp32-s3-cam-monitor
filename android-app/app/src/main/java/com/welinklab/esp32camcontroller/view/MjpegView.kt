@@ -9,14 +9,18 @@ import android.os.Looper
 import android.util.AttributeSet
 import android.util.Log
 import androidx.appcompat.widget.AppCompatImageView
+import com.welinklab.esp32camcontroller.net.MjpegHttp
+import com.welinklab.esp32camcontroller.net.StreamUrlUtils
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import okhttp3.Call
+import okhttp3.Request
 
 /**
  * MJPEG over HTTP: ESP32 CameraWebServer uses multipart/x-mixed-replace with Content-Length per part.
@@ -28,6 +32,7 @@ class MjpegView @JvmOverloads constructor(
 ) : AppCompatImageView(context, attrs) {
 
     private val running = AtomicBoolean(false)
+    private val activeCall = AtomicReference<Call?>(null)
     private val streamExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val frameLock = Any()
@@ -72,35 +77,63 @@ class MjpegView @JvmOverloads constructor(
 
     fun startStream(url: String) {
         if (running.getAndSet(true)) return
+        val streamUrl = StreamUrlUtils.normalizeStreamUrl(url)
         streamExecutor.execute {
             while (running.get()) {
-                var connection: HttpURLConnection? = null
                 try {
-                    connection = URL(url).openConnection() as HttpURLConnection
-                    connection.connectTimeout = 10000
-                    // MJPEG has unpredictable gaps between frames; a finite read timeout often kills the stream.
-                    connection.readTimeout = 0
-                    connection.setRequestProperty("Connection", "keep-alive")
-                    connection.setRequestProperty(
-                        "User-Agent",
-                        "Mozilla/5.0 (Linux; Android) Esp32CamController/1.0"
-                    )
-                    connection.doInput = true
-                    connection.connect()
-                    val input = BufferedInputStream(connection.inputStream, 32768)
-                    decodeMjpegStream(input)
+                    val request = Request.Builder()
+                        .url(streamUrl)
+                        .header("User-Agent", "Mozilla/5.0 (Linux; Android) Esp32CamController/1.0")
+                        .header("Connection", "keep-alive")
+                        .header("Accept", "multipart/x-mixed-replace,image/jpeg,*/*")
+                        .get()
+                        .build()
+                    val call = MjpegHttp.streamClient.newCall(request)
+                    activeCall.set(call)
+                    val response = call.execute()
+                    if (!running.get()) {
+                        response.close()
+                        break
+                    }
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "MJPEG HTTP ${response.code}")
+                        response.close()
+                        Thread.sleep(800)
+                        continue
+                    }
+                    val body = response.body
+                    if (body == null) {
+                        response.close()
+                        Thread.sleep(800)
+                        continue
+                    }
+                    try {
+                        BufferedInputStream(body.byteStream(), 32768).use { input ->
+                            decodeMjpegStream(input)
+                        }
+                    } finally {
+                        response.close()
+                    }
+                } catch (e: IOException) {
+                    if (!running.get() || e.message?.contains("Canceled", ignoreCase = true) == true) {
+                        break
+                    }
+                    Log.e(TAG, "MJPEG stream error", e)
+                    Thread.sleep(800)
                 } catch (e: Exception) {
                     Log.e(TAG, "MJPEG stream error", e)
                     Thread.sleep(800)
                 } finally {
-                    connection?.disconnect()
+                    activeCall.set(null)
                 }
             }
+            activeCall.set(null)
         }
     }
 
     fun stopStream() {
         running.set(false)
+        activeCall.getAndSet(null)?.cancel()
         mainHandler.post {
             synchronized(frameLock) {
                 pendingBitmap?.recycle()
