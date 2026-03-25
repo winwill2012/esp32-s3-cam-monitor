@@ -34,8 +34,8 @@ void setup() {
         .ledc_channel = LEDC_CHANNEL_0,
 
         .pixel_format = PIXFORMAT_JPEG,
-        .frame_size = FRAMESIZE_VGA,
-        .jpeg_quality = 13,
+        .frame_size = FRAMESIZE_QVGA,
+        .jpeg_quality = 6,
         .fb_count = 2,
         .grab_mode = CAMERA_GRAB_LATEST
     };
@@ -46,6 +46,10 @@ void setup() {
         return;
     }
     Serial.println("摄像头初始化成功");
+    // 设置水平镜像
+    const auto camera = esp_camera_sensor_get();
+    camera->set_hmirror(camera, true);
+
     Serial.println("正在连接WiFI");
     WiFiManager wm;
     wm.autoConnect("ESP32摄像头");
