@@ -3,33 +3,71 @@ package com.welinklab.esp32camcontroller.view
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.util.Log
-import android.view.SurfaceHolder
-import android.view.SurfaceView
+import androidx.appcompat.widget.AppCompatImageView
+import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * MJPEG over HTTP: ESP32 CameraWebServer uses multipart/x-mixed-replace with Content-Length per part.
+ * Using [AppCompatImageView] avoids SurfaceView timing (0-sized view / invalid surface) that drops every frame → black screen.
+ */
 class MjpegView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
-) : SurfaceView(context, attrs), SurfaceHolder.Callback {
+) : AppCompatImageView(context, attrs) {
 
     private val running = AtomicBoolean(false)
     private val streamExecutor = Executors.newSingleThreadExecutor()
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.BLACK
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val frameLock = Any()
+    private var pendingBitmap: Bitmap? = null
+    private val drawPending = AtomicBoolean(false)
+    private var displayedBitmap: Bitmap? = null
+
+    private val drawFrameRunnable: Runnable = object : Runnable {
+        override fun run() {
+            val bitmap = synchronized(frameLock) {
+                val b = pendingBitmap
+                pendingBitmap = null
+                b
+            } ?: run {
+                drawPending.set(false)
+                return
+            }
+
+            try {
+                if (!running.get()) {
+                    bitmap.recycle()
+                    return
+                }
+                displayedBitmap?.recycle()
+                displayedBitmap = bitmap
+                setImageBitmap(bitmap)
+            } finally {
+                val hasMore: Boolean = synchronized(frameLock) { pendingBitmap != null }
+                if (hasMore) {
+                    mainHandler.post(this)
+                } else {
+                    drawPending.set(false)
+                }
+            }
+        }
     }
 
     init {
-        holder.addCallback(this)
+        scaleType = ScaleType.FIT_CENTER
+        setBackgroundColor(Color.BLACK)
     }
 
     fun startStream(url: String) {
@@ -39,12 +77,18 @@ class MjpegView @JvmOverloads constructor(
                 var connection: HttpURLConnection? = null
                 try {
                     connection = URL(url).openConnection() as HttpURLConnection
-                    connection.connectTimeout = 5000
-                    connection.readTimeout = 10000
-                    connection.setRequestProperty("Connection", "Keep-Alive")
+                    connection.connectTimeout = 10000
+                    // MJPEG has unpredictable gaps between frames; a finite read timeout often kills the stream.
+                    connection.readTimeout = 0
+                    connection.setRequestProperty("Connection", "keep-alive")
+                    connection.setRequestProperty(
+                        "User-Agent",
+                        "Mozilla/5.0 (Linux; Android) Esp32CamController/1.0"
+                    )
                     connection.doInput = true
                     connection.connect()
-                    decodeMjpegStream(connection.inputStream)
+                    val input = BufferedInputStream(connection.inputStream, 32768)
+                    decodeMjpegStream(input)
                 } catch (e: Exception) {
                     Log.e(TAG, "MJPEG stream error", e)
                     Thread.sleep(800)
@@ -57,10 +101,58 @@ class MjpegView @JvmOverloads constructor(
 
     fun stopStream() {
         running.set(false)
+        mainHandler.post {
+            synchronized(frameLock) {
+                pendingBitmap?.recycle()
+                pendingBitmap = null
+            }
+            displayedBitmap?.recycle()
+            displayedBitmap = null
+            setImageDrawable(null)
+            drawPending.set(false)
+        }
     }
 
-    private fun decodeMjpegStream(input: InputStream) {
-        val buffer = ByteArray(4096)
+    private fun decodeMjpegStream(input: BufferedInputStream) {
+        input.mark(SNIFF_LEN)
+        val sniff = ByteArray(SNIFF_LEN)
+        val n = input.read(sniff)
+        if (n <= 0) return
+        input.reset()
+
+        val sniffStr = String(sniff, 0, n, StandardCharsets.ISO_8859_1)
+        val useMultipart = sniffStr.contains("Content-Type:", ignoreCase = true)
+            || sniffStr.contains("Content-Length:", ignoreCase = true)
+            || sniffStr.trimStart().startsWith("--")
+
+        if (useMultipart) {
+            decodeMultipartJpeg(input)
+        } else {
+            decodeJpegMarkers(input)
+        }
+    }
+
+    private fun decodeMultipartJpeg(input: InputStream) {
+        while (running.get()) {
+            val headerOut = ByteArrayOutputStream()
+            if (!readUntilDoubleCrlf(input, headerOut, MAX_HEADER_BYTES)) break
+
+            val headers = String(headerOut.toByteArray(), StandardCharsets.ISO_8859_1)
+            val cl = CONTENT_LENGTH_REGEX.find(headers)?.groupValues?.get(1)?.toIntOrNull()
+            if (cl == null || cl <= 0 || cl > MAX_JPEG_PART_BYTES) {
+                Log.w(TAG, "multipart: skip part (bad Content-Length), trying marker fallback")
+                decodeJpegMarkers(input)
+                break
+            }
+
+            val body = ByteArray(cl)
+            if (!readFully(input, body)) break
+            decodeAndEnqueue(body)
+        }
+    }
+
+    private fun decodeJpegMarkers(input: InputStream) {
+        val buffer = ByteArray(16384)
         val jpgBuffer = ByteArrayOutputStream()
         var previous = -1
 
@@ -79,10 +171,7 @@ class MjpegView @JvmOverloads constructor(
                     jpgBuffer.write(current)
                     if (previous == 0xFF && current == 0xD9) {
                         val jpegBytes = jpgBuffer.toByteArray()
-                        val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
-                        if (bitmap != null) {
-                            drawBitmap(bitmap)
-                        }
+                        decodeAndEnqueue(jpegBytes)
                         jpgBuffer.reset()
                     }
                 }
@@ -91,37 +180,60 @@ class MjpegView @JvmOverloads constructor(
         }
     }
 
-    private fun drawBitmap(bitmap: Bitmap) {
-        val canvas: Canvas = holder.lockCanvas() ?: return
-        try {
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-            val srcW = bitmap.width.toFloat()
-            val srcH = bitmap.height.toFloat()
-            val dstW = width.toFloat()
-            val dstH = height.toFloat()
-            val scale = minOf(dstW / srcW, dstH / srcH)
-            val drawW = srcW * scale
-            val drawH = srcH * scale
-            val left = (dstW - drawW) / 2f
-            val top = (dstH - drawH) / 2f
-            val rect = android.graphics.RectF(left, top, left + drawW, top + drawH)
-            canvas.drawBitmap(bitmap, null, rect, null)
-        } catch (e: Exception) {
-            Log.e(TAG, "Draw frame failed", e)
-        } finally {
-            holder.unlockCanvasAndPost(canvas)
+    private fun decodeAndEnqueue(jpegBytes: ByteArray) {
+        val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+        if (bitmap != null) {
+            enqueueFrame(bitmap)
         }
     }
 
-    override fun surfaceCreated(holder: SurfaceHolder) = Unit
+    private fun enqueueFrame(bitmap: Bitmap) {
+        synchronized(frameLock) {
+            pendingBitmap?.recycle()
+            pendingBitmap = bitmap
+        }
+        if (drawPending.compareAndSet(false, true)) {
+            mainHandler.post(drawFrameRunnable)
+        }
+    }
 
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+    private fun readUntilDoubleCrlf(input: InputStream, out: ByteArrayOutputStream, maxBytes: Int): Boolean {
+        var w0 = -1
+        var w1 = -1
+        var w2 = -1
+        var w3 = -1
+        var total = 0
+        while (total < maxBytes && running.get()) {
+            val x = input.read()
+            if (x < 0) return false
+            out.write(x)
+            total++
+            w0 = w1
+            w1 = w2
+            w2 = w3
+            w3 = x
+            if (total >= 4 && w0 == 0x0D && w1 == 0x0A && w2 == 0x0D && w3 == 0x0A) {
+                return true
+            }
+        }
+        return false
+    }
 
-    override fun surfaceDestroyed(holder: SurfaceHolder) {
-        stopStream()
+    private fun readFully(input: InputStream, dst: ByteArray): Boolean {
+        var offset = 0
+        while (offset < dst.size && running.get()) {
+            val n = input.read(dst, offset, dst.size - offset)
+            if (n < 0) return false
+            offset += n
+        }
+        return offset == dst.size
     }
 
     companion object {
         private const val TAG = "MjpegView"
+        private const val SNIFF_LEN = 4096
+        private const val MAX_HEADER_BYTES = 65536
+        private const val MAX_JPEG_PART_BYTES = 16 * 1024 * 1024
+        private val CONTENT_LENGTH_REGEX = Regex("(?i)Content-Length:\\s*(\\d+)")
     }
 }
