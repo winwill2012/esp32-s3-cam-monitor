@@ -68,7 +68,7 @@ python esp32-cam-proxy.py --udp-port 5000 --http-port 8080
 
 如果你不想在 Android Studio 里重新编译，仓库中已经提供编译好的安装包：
 
-- APK 路径：`android-app/esp32-cam.apk`
+- APK 路径：`android-app/app-release.apk`
 
 你可以直接双击该 APK 安装到手机上（或通过 `adb install` 安装）。
 
